@@ -64,10 +64,14 @@ const studentAdmissionSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Auto-generate admissionId
-studentAdmissionSchema.pre('validate', async function (next) {
+studentAdmissionSchema.pre('save', async function (next) {
     if (!this.admissionId) {
-        const count = await mongoose.model('StudentAdmission').countDocuments();
-        this.admissionId = `ADM${String(count + 1).padStart(5, '0')}`;
+        try {
+            const count = await this.constructor.countDocuments();
+            this.admissionId = `ADM${String(count + 1).padStart(5, '0')}`;
+        } catch (err) {
+            return next(err);
+        }
     }
     next();
 });

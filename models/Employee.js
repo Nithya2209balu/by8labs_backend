@@ -206,6 +206,18 @@ const employeeSchema = new mongoose.Schema({
         upiId: String
     },
 
+    // Statutory Details
+    pfAccountNumber: {
+        type: String
+    },
+    uanNumber: {
+        type: String
+    },
+    esiNumber: {
+        type: String
+    },
+
+
     isActive: {
         type: Boolean,
         default: true

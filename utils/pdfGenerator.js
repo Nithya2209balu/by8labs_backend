@@ -1,11 +1,8 @@
 const PDFDocument = require('pdfkit');
 const { toWords } = require('number-to-words');
+const path = require('path');
+const fs = require('fs');
 
-/**
- * Generate salary slip PDF
- * @param {Object} payroll - Payroll document with populated employee data
- * @returns {PDFDocument} PDF document stream
- */
 /**
  * Generate salary slip PDF
  * @param {Object} payroll - Payroll document with populated employee data
@@ -13,149 +10,209 @@ const { toWords } = require('number-to-words');
  * @returns {PDFDocument} PDF document stream
  */
 function generateSalarySlipPDF(payroll, withTax = true) {
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
 
     const employee = payroll.employeeId;
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthNames = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
+        'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
     const monthName = monthNames[payroll.month - 1];
 
-    // Calculate adjusted values based on withTax flag
-    let totalDeductions = payroll.totalDeductions;
-    let netPayable = payroll.netPayableSalary;
-
-    if (!withTax) {
-        // Remove tax components from deductions
-        // totalDeductions includes: lopAmount + totalTax + advanceDeduction + timeDeductions + otherDeductions
-        // We subtract totalTax
-        totalDeductions = (payroll.totalDeductions || 0) - (payroll.totalTax || 0);
-
-        // Add back tax to net pay
-        netPayable = (payroll.netPayableSalary || 0) + (payroll.totalTax || 0);
+    // --- Header Section ---
+    const logoPath = path.join(__dirname, '..', 'public', 'logo.png');
+    if (fs.existsSync(logoPath)) {
+        doc.image(logoPath, 40, 30, { width: 100 });
     }
 
-    // Title
-    doc.fontSize(24).font('Helvetica-Bold').text('Salary Slip', { align: 'center' });
-    doc.fontSize(14).font('Helvetica').text(`${monthName} ${payroll.year}`, { align: 'center' });
-
-    if (!withTax) {
-        doc.fontSize(10).font('Helvetica-Oblique').text('(Tax Deductions Excluded)', { align: 'center' });
-    }
-
-    doc.moveDown(2);
-
-    // Employee Details Section
-    doc.fontSize(14).font('Helvetica-Bold').text('Employee Details');
-    doc.moveDown(0.5);
-    doc.fontSize(11).font('Helvetica');
-    doc.text(`EID: ${employee.employeeId || 'N/A'}`);
-    doc.text(`Name: ${employee.firstName} ${employee.lastName}`);
-    doc.text(`Designation: ${employee.designation || 'N/A'}`);
-    doc.text(`Date of Joining: ${employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString('en-GB') : 'N/A'}`);
-    doc.moveDown(1.5);
-
-    // Pay Period Section
-    doc.fontSize(14).font('Helvetica-Bold').text('Pay Period');
-    doc.moveDown(0.5);
-    doc.fontSize(11).font('Helvetica');
-    const startDate = `01/${payroll.month.toString().padStart(2, '0')}/${payroll.year}`;
-    const endDate = new Date(payroll.year, payroll.month, 0).getDate();
-    const endDateStr = `${endDate}/${payroll.month.toString().padStart(2, '0')}/${payroll.year}`;
-    doc.text(`Pay Cycle Start: ${startDate}`);
-    doc.text(`Pay Cycle End: ${endDateStr}`);
-    doc.moveDown(1.5);
-
-    // Attendance Section
-    doc.fontSize(14).font('Helvetica-Bold').text('Attendance');
-    doc.moveDown(0.5);
-    doc.fontSize(11).font('Helvetica');
-    doc.text(`Total Working Days: ${payroll.totalWorkingDays}`);
-    doc.text(`No. of Absent Days: ${payroll.absentDays}`);
-    doc.text(`Actual Working Days: ${payroll.actualWorkingDays}`);
-    doc.moveDown(1.5);
-
-    // Bank Details Section
-    if (employee.bankDetails && employee.bankDetails.bankName) {
-        doc.fontSize(14).font('Helvetica-Bold').text('Bank Details');
-        doc.moveDown(0.5);
-        doc.fontSize(11).font('Helvetica');
-        doc.text(`Bank Name: ${employee.bankDetails.bankName}`);
-        doc.text(`Account No: ${employee.bankDetails.accountNumber || 'N/A'}`);
-        doc.text(`Branch: ${employee.bankDetails.branch || 'N/A'}`);
-        doc.moveDown(1.5);
-    }
-
-    // Time & Deductions Section
-    doc.fontSize(14).font('Helvetica-Bold').text('Time & Deductions');
-    doc.moveDown(0.5);
-    doc.fontSize(11).font('Helvetica');
-    const lateHours = Math.floor((payroll.lateArrivalMinutes || 0) / 60);
-    const lateMinutes = (payroll.lateArrivalMinutes || 0) % 60;
-    const earlyHours = Math.floor((payroll.earlyLeavingMinutes || 0) / 60);
-    const earlyMinutes = (payroll.earlyLeavingMinutes || 0) % 60;
-    doc.text(`Late Arrival: ${lateHours}h ${lateMinutes}m (${payroll.lateArrivalMinutes || 0} mins) – Deduction: ${(payroll.timeDeductions || 0).toFixed(2)}`);
-    doc.text(`Early Leaving: ${earlyHours}h ${earlyMinutes}m (payroll.earlyLeavingMinutes || 0) mins) – Deduction: 0.00`);
-
-    // Explicitly show tax info if included
-    if (withTax) {
-        doc.text(`Tax Deductions (PF+ESI+PT+TDS): ${(payroll.totalTax || 0).toFixed(2)}`);
-    } else {
-        doc.text(`Tax Deductions: Excluded from calculation`);
-    }
+    doc.fontSize(16).font('Helvetica-Bold').text('BY8LABS AI PRIVATE LDT.', { align: 'center' });
+    doc.fontSize(9).font('Helvetica').text('5861, SANTHANATHAPURAM, 7 th street, Pudukkottai-622001', { align: 'center' });
+    doc.text('Tamil Nadu', { align: 'center' });
 
     doc.moveDown(1.5);
+    doc.fontSize(14).font('Helvetica-Bold').text(`PAYSLIP FOR ${monthName} ${payroll.year}`, { align: 'center' });
+    doc.moveDown(1.5);
 
-    // Salary Description Table
-    doc.fontSize(14).font('Helvetica-Bold').text('Salary Description');
-    doc.moveDown(0.5);
+    // --- Employee Details Grid ---
+    const startX = 40;
+    const midX = 300;
+    let y = doc.y;
 
-    const tableTop = doc.y;
-    const col1X = 50;
-    const col2X = 400;
+    const rowHeight = 16;
 
-    // Table headers
-    doc.fontSize(11).font('Helvetica-Bold');
-    doc.text('Description', col1X, tableTop);
-    doc.text('Amount', col2X, tableTop);
-    doc.moveDown(0.5);
-
-    // Draw line under headers
-    doc.moveTo(col1X, doc.y).lineTo(550, doc.y).stroke();
-    doc.moveDown(0.3);
-
-    // Table rows
-    doc.font('Helvetica');
-    const addRow = (description, amount, isBold = false) => {
-        if (isBold) doc.font('Helvetica-Bold');
-        doc.text(description, col1X, doc.y);
-        doc.text((amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), col2X, doc.y);
-        if (isBold) doc.font('Helvetica');
-        doc.moveDown(0.5);
+    // Helper to draw a row with two columns
+    const drawRow = (label1, val1, label2, val2, yPos) => {
+        doc.fontSize(9).font('Helvetica-Bold').text(label1, startX, yPos);
+        doc.font('Helvetica').text(val1 || '-', startX + 90, yPos);
+        doc.font('Helvetica-Bold').text(label2, midX, yPos);
+        doc.font('Helvetica').text(val2 || '-', midX + 110, yPos);
     };
 
-    addRow('Monthly Salary', payroll.monthlySalary || 0);
-    addRow('Actual Salary (after LOP)', payroll.actualSalary || 0);
-    addRow('Incentives', payroll.incentives || 0);
-    addRow('Advance Taken', payroll.advance || 0);
-    addRow('Advance Deduction', -(payroll.advanceDeduction || 0));
+    drawRow('Name', `${employee.firstName} ${employee.lastName}`, 'PAN', employee.bankDetails?.panNumber, y);
+    y += rowHeight;
+    drawRow('Employee Code', employee.employeeId, 'Employee Status', employee.employmentStatus, y); // Adjusted some placeholders from DOCX
+    y += rowHeight;
+    drawRow('Sex', employee.gender, 'Designation', employee.designation, y);
+    y += rowHeight;
+    drawRow('Account Number', employee.bankDetails?.accountNumber, 'Location', employee.region || 'Onsite', y);
+    y += rowHeight;
+    drawRow('PF Account Number', employee.pfAccountNumber, 'Joining Date', employee.joiningDate ? new Date(employee.joiningDate).toLocaleDateString('en-GB') : '', y);
+    y += rowHeight;
+    drawRow('UAN', employee.uanNumber, 'Leaving Date', employee.dateOfLeaving ? new Date(employee.dateOfLeaving).toLocaleDateString('en-GB') : '', y);
+    y += rowHeight;
+    drawRow('ESI Number', employee.esiNumber, 'Tax Regime', 'NEW', y); // Based on DOCX
 
-    // Show total deductions (adjusted)
-    addRow(`Total Deductions ${withTax ? '' : '(excl. Tax)'}`, -(totalDeductions || 0));
+    y += rowHeight + 10;
+    doc.y = y;
 
-    doc.moveDown(0.3);
-    doc.moveTo(col1X, doc.y).lineTo(550, doc.y).stroke();
-    doc.moveDown(0.5);
+    // --- Summary Row ---
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('PAY DAYS:', startX, y);
+    doc.text('ATTENDANCE ARREAR DAYS:', startX + 120, y);
+    doc.text('INCREMENT ARREAR DAYS:', startX + 320, y);
 
-    addRow('Net Payable Salary', netPayable || 0, true);
+    y += 15;
+    doc.font('Helvetica');
+    doc.text(payroll.actualWorkingDays.toFixed(2), startX, y);
+    doc.text((0).toFixed(2), startX + 120, y);
+    doc.text((0).toFixed(2), startX + 320, y);
 
-    doc.moveDown(1);
+    y += 25;
 
-    // Amount in words
-    const amountInWords = convertToWords(Math.round(netPayable || 0));
-    doc.fontSize(11).font('Helvetica-Bold').text('Amount in Words:');
-    doc.font('Helvetica').text(amountInWords);
+    // --- Table Headers ---
+    // Draw table outlines
+    doc.rect(startX, y, 515, 20).stroke(); // Header box
 
-    // Don't call doc.end() here - let the piping in the route handler manage the stream
+    let currentY = y + 6;
+    doc.fontSize(9).font('Helvetica-Bold');
+
+    // Earnings side
+    doc.text('EARNINGS (INR)', startX + 5, currentY);
+
+    // Deductions side
+    doc.text('DEDUCTIONS (INR )', startX + 270, currentY);
+
+    // Vertical divider for table
+    doc.moveTo(startX + 260, y).lineTo(startX + 260, y + 250).stroke(); // Main vertical divider
+    doc.moveTo(startX, y + 250).lineTo(startX + 515, y + 250).stroke(); // Bottom border
+
+    y += 20; // Move to subheaders
+    currentY = y + 6;
+    doc.rect(startX, y, 515, 20).stroke(); // Subheader box
+
+    doc.text('COMPONENTS', startX + 5, currentY);
+    doc.text('RATE', startX + 90, currentY);
+    doc.text('MONTHLY', startX + 140, currentY);
+    doc.text('ARREAR', startX + 190, currentY);
+    doc.text('TOTAL', startX + 230, currentY);
+
+    doc.text('COMPONENTS', startX + 270, currentY);
+    doc.text('TOTAL', startX + 470, currentY);
+
+    y += 20;
+    currentY = y + 8;
+    doc.font('Helvetica');
+
+    // --- Table Content ---
+
+    // Calculate adjusted values based on withTax flag
+    let pfAmount = payroll.providentFund || 0;
+    let ptAmount = payroll.professionalTax || 0;
+    let itDeduction = payroll.incomeTax || 0;
+    let lopAmount = payroll.lopAmount || 0;
+
+    let totalDeductions = pfAmount + ptAmount + itDeduction + lopAmount + (payroll.advanceDeduction || 0) + (payroll.timeDeductions || 0) + (payroll.otherDeductions || 0);
+
+    if (!withTax) {
+        // If without tax, remove PF, PT, IT
+        totalDeductions = totalDeductions - pfAmount - ptAmount - itDeduction;
+        pfAmount = 0;
+        ptAmount = 0;
+        itDeduction = 0;
+    }
+
+    const netPayable = payroll.grossSalary + (payroll.incentives || 0) + (payroll.advance || 0) - totalDeductions;
+
+    // Function to draw Earnings row
+    let eY = currentY;
+    const addEarningRow = (comp, rate, note = '') => {
+        doc.fontSize(8).text(comp, startX + 5, eY);
+        doc.text(rate.toFixed(2) + (note ? `\n${note}` : ''), startX + 90, eY);
+        doc.text(rate.toFixed(2), startX + 140, eY);
+        doc.text('0.00', startX + 190, eY);
+        doc.text(rate.toFixed(2), startX + 230, eY);
+        eY += note ? 25 : 15;
+    };
+
+    // Draw Earnings
+    addEarningRow('Basic', payroll.basicSalary || 0);
+    addEarningRow('HRA', payroll.hra || 0, '(40 or 50%)');
+    addEarningRow('Telephone Allowance', payroll.telephoneAllowance || 0, '(fixed)');
+    addEarningRow('Conveyance', payroll.conveyanceAllowance || 0, '(fixed)');
+    addEarningRow('Medical', payroll.medicalAllowance || 0, '(fixed)');
+    if (payroll.specialAllowance > 0) {
+        addEarningRow('Special Allowance', payroll.specialAllowance || 0);
+    }
+    if (payroll.incentives > 0) {
+        addEarningRow('Incentives', payroll.incentives || 0);
+    }
+    if (payroll.advance > 0) {
+        addEarningRow('Advance', payroll.advance || 0);
+    }
+
+    // Draw Deductions
+    let dY = currentY;
+    const addDeductionRow = (comp, amount, note = '') => {
+        doc.fontSize(8).text(comp, startX + 270, dY);
+        doc.text(amount.toFixed(2) + (note ? ` ${note}` : ''), startX + 410, dY, { width: 100, align: 'right' });
+        dY += note ? 25 : 15;
+    };
+
+    if (withTax || pfAmount > 0) addDeductionRow('PF', pfAmount, '(fixed)');
+    if (withTax || ptAmount > 0) addDeductionRow('PT', ptAmount, '(fixed)');
+    if (withTax || itDeduction > 0) addDeductionRow('IT', itDeduction, '(yearly once paid\nbased on income)');
+    if (lopAmount > 0) addDeductionRow('Loss of Pay (LOP)', lopAmount);
+    if (payroll.advanceDeduction > 0) addDeductionRow('Advance Deduction', payroll.advanceDeduction);
+    if (payroll.timeDeductions > 0) addDeductionRow('Late Arrival/Early Leave Deductions', payroll.timeDeductions);
+    if (payroll.otherDeductions > 0) addDeductionRow('Other Deductions', payroll.otherDeductions);
+
+    if (!withTax) {
+        doc.font('Helvetica-Oblique').text('(Tax Details Excluded)', startX + 270, dY);
+    }
+
+    // Draw Total Rows inside the table
+    // Bottom border is at y + 250
+    const totalsY = y + 230;
+    doc.moveTo(startX, totalsY - 5).lineTo(startX + 515, totalsY - 5).stroke(); // Top border of Total row
+
+    doc.fontSize(9).font('Helvetica-Bold');
+    doc.text('TOTAL EARNINGS', startX + 5, totalsY);
+    const totalEarnings = payroll.grossSalary + (payroll.incentives || 0) + (payroll.advance || 0);
+    doc.text(totalEarnings.toFixed(2), startX + 90, totalsY);
+    doc.text(totalEarnings.toFixed(2), startX + 140, totalsY);
+    doc.text('0.00', startX + 190, totalsY);
+    doc.text(totalEarnings.toFixed(2), startX + 230, totalsY);
+
+    doc.text('TOTAL DEDUCTIONS', startX + 270, totalsY);
+    doc.text(totalDeductions.toFixed(2), startX + 410, totalsY, { width: 100, align: 'right' });
+
+    // Table ends at y + 250
+    y = y + 260;
+
+    // --- Footer Section ---
+    doc.fontSize(10).font('Helvetica-Bold');
+    doc.text('NET PAY ( INR )', startX, y);
+    doc.text(netPayable.toFixed(2), startX + 150, y);
+
+    y += 20;
+    doc.text('NET PAY IN WORDS', startX, y);
+    doc.font('Helvetica').text(convertToWords(Math.round(netPayable)), startX + 150, y);
+
+    y += 50;
+
+    // Cut Here line
+    doc.fontSize(10).font('Helvetica');
+    const cutLineText = '..................................................... Cut Here .....................................................';
+    doc.text(cutLineText, { align: 'center' });
+
     return doc;
 }
 

@@ -127,21 +127,33 @@ router.post('/:id/convert', protect, hrOnly, async (req, res) => {
             return res.status(400).json({ message: 'Admission already converted to a student record' });
         }
 
+        // Generate unique studentId by finding the highest existing one and incrementing
+        const lastStudent = await Student.findOne({}, { studentId: 1 }).sort({ studentId: -1 });
+        let nextNum = 1;
+        if (lastStudent && lastStudent.studentId) {
+            const match = lastStudent.studentId.match(/STU(\d+)/);
+            if (match) nextNum = parseInt(match[1]) + 1;
+        }
+        const studentId = `STU${String(nextNum).padStart(4, '0')}`;
+
         // Create student from admission
         const student = new Student({
+            studentId,
             name: admission.applicantName,
-            email: admission.email,
-            phone: admission.phone,
-            dateOfBirth: admission.dateOfBirth,
-            gender: admission.gender,
-            address: admission.address,
-            guardianName: admission.guardianName,
-            guardianPhone: admission.guardianPhone,
-            course: admission.appliedCourse,
+            email: admission.email || undefined,
+            phone: admission.phone || undefined,
+            dateOfBirth: admission.dateOfBirth || undefined,
+            gender: admission.gender || undefined,
+            address: admission.address || undefined,
+            guardianName: admission.guardianName || undefined,
+            guardianPhone: admission.guardianPhone || undefined,
+            course: admission.appliedCourse || undefined,
             enrollmentDate: new Date(),
             status: 'Active',
             notes: `Admitted via application ${admission.admissionId}`,
         });
+
+        // Save student - studentId is auto-generated in pre('save')
         await student.save();
 
         // Update course enrolled list
@@ -162,7 +174,8 @@ router.post('/:id/convert', protect, hrOnly, async (req, res) => {
 
         res.json({ message: 'Admission approved and student record created', admission, student });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        console.error('Convert admission error:', err.message, err.stack);
+        res.status(500).json({ message: err.message || 'Server error' });
     }
 });
 

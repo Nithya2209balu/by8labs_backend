@@ -4,7 +4,6 @@ const studentSchema = new mongoose.Schema({
     studentId: {
         type: String,
         unique: true,
-        required: true,
     },
     name: { type: String, required: true, trim: true },
     email: { type: String, trim: true, lowercase: true },
@@ -29,10 +28,14 @@ const studentSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Auto-generate studentId
-studentSchema.pre('validate', async function (next) {
+studentSchema.pre('save', async function (next) {
     if (!this.studentId) {
-        const count = await mongoose.model('Student').countDocuments();
-        this.studentId = `STU${String(count + 1).padStart(4, '0')}`;
+        try {
+            const count = await this.constructor.countDocuments();
+            this.studentId = `STU${String(count + 1).padStart(4, '0')}`;
+        } catch (err) {
+            return next(err);
+        }
     }
     next();
 });
