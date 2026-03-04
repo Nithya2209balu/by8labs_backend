@@ -41,6 +41,12 @@ const attendanceSchema = new mongoose.Schema({
     remarks: {
         type: String
     },
+    permissionFrom: {
+        type: String   // e.g. "09:00"
+    },
+    permissionTo: {
+        type: String   // e.g. "11:00"
+    },
     markedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'

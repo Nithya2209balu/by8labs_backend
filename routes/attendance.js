@@ -61,7 +61,7 @@ router.post('/mark', protect, checkDataAccess, async (req, res) => {
             return res.status(400).json({ message: 'User is not linked to an employee record' });
         }
 
-        const { status } = req.body;
+        const { status, permissionFrom, permissionTo } = req.body;
 
         // ALWAYS use today's date - cannot mark for past or future
         const today = new Date();
@@ -89,24 +89,24 @@ router.post('/mark', protect, checkDataAccess, async (req, res) => {
         });
 
         if (existingAttendance) {
-            // Update existing record instead of erroring
-            existingAttendance.status = status || 'Present';
-            existingAttendance.checkIn = new Date(); // Update check-in time
-            await existingAttendance.save();
-
-            const populatedAttendance = await Attendance.findById(existingAttendance._id)
-                .populate('employeeId', 'firstName lastName employeeId');
-
-            return res.json(populatedAttendance);
+            return res.status(400).json({
+                message: `Attendance already marked as "${existingAttendance.status}" for today. You can only mark attendance once per day.`,
+                alreadyMarked: true,
+                status: existingAttendance.status
+            });
         }
 
         // Create attendance record for TODAY only
         const attendanceData = {
             employeeId: req.user.employeeId,
-            date: today,  // Force today's date
+            date: today,
             status: status || 'Present',
             checkIn: new Date(),
-            markedBy: req.user._id
+            markedBy: req.user._id,
+            ...(status === 'Permission' && {
+                permissionFrom: permissionFrom || '',
+                permissionTo: permissionTo || ''
+            })
         };
 
         const attendance = await Attendance.create(attendanceData);
@@ -371,7 +371,7 @@ router.post('/bulk-mark', protect, isHR, async (req, res) => {
         };
 
         for (const record of attendanceRecords) {
-            const { employeeId, status, date } = record;
+            const { employeeId, status, date, permissionFrom, permissionTo } = record;
 
             // Validate date
             const attendanceDate = date ? new Date(date) : new Date();
@@ -398,7 +398,11 @@ router.post('/bulk-mark', protect, isHR, async (req, res) => {
                     date: attendanceDate,
                     status: status || 'Present',
                     checkIn: new Date(),
-                    markedBy: req.user._id
+                    markedBy: req.user._id,
+                    ...(status === 'Permission' && {
+                        permissionFrom: permissionFrom || '',
+                        permissionTo: permissionTo || ''
+                    })
                 });
 
                 results.success.push(attendance);
