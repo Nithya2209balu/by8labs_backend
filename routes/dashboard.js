@@ -5,6 +5,11 @@ const { isHR } = require('../middleware/rbac');
 const Employee = require('../models/Employee');
 const { Leave } = require('../models/Leave');
 const Attendance = require('../models/Attendance');
+const Student = require('../models/Student');
+const StudentCourse = require('../models/StudentCourse');
+const StudentAttendance = require('../models/StudentAttendance');
+const StudentLeave = require('../models/StudentLeave');
+const StudentAssignment = require('../models/StudentAssignment');
 
 // @route   GET /api/dashboard/stats
 // @desc    Get dashboard statistics
@@ -49,6 +54,62 @@ router.get('/stats', protect, async (req, res) => {
         res.json(stats);
     } catch (error) {
         res.status(500).json({ message: error.message });
+    }
+});
+
+// @route   GET /api/dashboard/admin/overall
+// @desc    Get overall student portal dashboard stats
+// @access  Private (Admin/HR)
+router.get('/admin/overall', protect, async (req, res) => {
+    try {
+        const [
+            totalStudents,
+            pendingApprovals,
+            totalCourses,
+            totalAttendance,
+            presentCount,
+            totalLeaves,
+            pendingLeaves,
+            approvedLeaves,
+            totalTasks
+        ] = await Promise.all([
+            Student.countDocuments({ isApproved: true }),
+            Student.countDocuments({ isApproved: false }),
+            StudentCourse.countDocuments(),
+            StudentAttendance.countDocuments(),
+            StudentAttendance.countDocuments({ status: 'Present' }),
+            StudentLeave.countDocuments(),
+            StudentLeave.countDocuments({ status: 'Pending' }),
+            StudentLeave.countDocuments({ status: 'Approved' }),
+            StudentAssignment.countDocuments()
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                users: {
+                    totalStudents,
+                    pendingApprovals
+                },
+                courses: {
+                    total: totalCourses
+                },
+                attendance: {
+                    totalRecords: totalAttendance,
+                    averagePercentage: totalAttendance > 0 ? Math.round((presentCount / totalAttendance) * 100) : 0
+                },
+                leave: {
+                    total: totalLeaves,
+                    pending: pendingLeaves,
+                    approved: approvedLeaves
+                },
+                tasks: {
+                    total: totalTasks
+                }
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
 });
 

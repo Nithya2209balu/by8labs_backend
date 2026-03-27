@@ -85,10 +85,17 @@ router.post('/register', async (req, res) => {
 // @access  Public
 router.post('/login', async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, identifier, password } = req.body;
+        const loginId = email || identifier;
 
-        // Find user with password field
-        const user = await User.findOne({ email }).select('+password').populate('employeeId');
+        if (!loginId || !password) {
+            return res.status(400).json({ message: 'Please provide email/username and password' });
+        }
+
+        // Find user by email OR username with password field
+        const user = await User.findOne({
+            $or: [{ email: loginId.toLowerCase() }, { username: loginId }]
+        }).select('+password').populate('employeeId');
 
         if (!user) {
             return res.status(401).json({ message: 'Invalid credentials' });

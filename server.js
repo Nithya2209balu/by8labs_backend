@@ -53,12 +53,15 @@ app.use('/api/documents', require('./routes/documents'));
 // Student module routes (HR only)
 app.use('/api/students', require('./routes/students'));
 app.use('/api/student-courses', require('./routes/studentCourses'));
-app.use('/api/student-attendance', require('./routes/studentAttendance'));
+app.use('/api/attendance', require('./routes/attendance')); // Employee
+app.use('/api/attendance', require('./routes/studentAttendance')); // Student-ID based & shared
+app.use('/api/student-attendance', require('./routes/studentAttendance')); // Legacy/specific
 app.use('/api/student-fees', require('./routes/studentFees'));
 app.use('/api/student-leaves', require('./routes/studentLeaves'));
 app.use('/api/student-assignments', require('./routes/studentAssignments'));
 app.use('/api/student-reports', require('./routes/studentReports'));
 app.use('/api/student-admissions', require('./routes/studentAdmissions'));
+app.use('/api/courses', require('./routes/courses'));
 
 // Welcome route
 app.get('/', (req, res) => {

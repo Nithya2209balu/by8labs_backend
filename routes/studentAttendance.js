@@ -1,8 +1,20 @@
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
+const nodemailer = require('nodemailer');
 const { protect } = require('../middleware/auth');
 const StudentAttendance = require('../models/StudentAttendance');
+
+// ─── Nodemailer transporter (re-uses existing SMTP env vars) ───────────────
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+    port: parseInt(process.env.SMTP_PORT) || 465,
+    secure: true,
+    auth: {
+        user: process.env.SMTP_USER || process.env.FROM_EMAIL,
+        pass: process.env.SMTP_PASS,
+    },
+});
 
 const hrOnly = (req, res, next) => {
     if (req.user.role !== 'HR') return res.status(403).json({ message: 'Access denied. HR only.' });
@@ -12,6 +24,50 @@ const hrOnly = (req, res, next) => {
 // Helper: UTC date range for a given date string (e.g., '2026-03-02')
 const dayStart = (d) => new Date(d + 'T00:00:00.000Z');
 const dayEnd   = (d) => new Date(d + 'T23:59:59.999Z');
+
+// ─── GET overall summary for dashboard (Total stats) ───────────────────────
+router.get('/summary', protect, async (req, res) => {
+    try {
+        const records = await StudentAttendance.find({});
+        
+        // Group by user ID
+        const userSummary = {};
+        records.forEach(r => {
+            const userId = r.student.toString();
+            if (!userSummary[userId]) {
+                userSummary[userId] = {
+                    totalDays: 0,
+                    presentCount: 0,
+                    absentCount: 0,
+                    holidayCount: 0,
+                };
+            }
+            userSummary[userId].totalDays++;
+            if (r.status === 'Present') userSummary[userId].presentCount++;
+            if (r.status === 'Absent') userSummary[userId].absentCount++;
+            if (r.status === 'Holiday') userSummary[userId].holidayCount++;
+        });
+        
+        // Calculate percentages
+        const finalSummary = Object.keys(userSummary).map(userId => {
+            const data = userSummary[userId];
+            data.attendancePercentage = data.totalDays > 0 
+                ? (data.presentCount / data.totalDays) * 100 
+                : 0;
+            return {
+                userId,
+                ...data
+            };
+        });
+
+        res.json({
+            success: true,
+            data: finalSummary
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
 
 // ─── GET all attendance records (with filters) ─────────────────────────────
 router.get('/', protect, hrOnly, async (req, res) => {
@@ -86,6 +142,201 @@ router.post('/', protect, hrOnly, async (req, res) => {
             { upsert: true, new: true }
         ).populate('student', 'name studentId');
         res.json(record);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ─── Mark Attendance by User ID (POST /:userId) ───────────────────────────
+router.post('/:userId', protect, hrOnly, async (req, res) => {
+    try {
+        const { date, status, courseId, remarks } = req.body;
+        const userId = req.params.userId;
+
+        if (!date || !status) {
+            return res.status(400).json({ message: 'Date and status are required' });
+        }
+
+        // Normalize status
+        let normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+        if (!['Present', 'Absent', 'Holiday'].includes(normalizedStatus)) {
+            return res.status(400).json({ message: 'Status must be one of: present, absent, holiday' });
+        }
+
+        // Check if already marked — return 409 so UI can show the right message
+        const existing = await StudentAttendance.findOne({
+            student: new mongoose.Types.ObjectId(userId),
+            date: dayStart(date)
+        });
+        if (existing) {
+            return res.status(409).json({ message: 'Attendance already marked. Use Edit option.' });
+        }
+
+        const record = await StudentAttendance.create({
+            student: new mongoose.Types.ObjectId(userId),
+            date: dayStart(date),
+            status: normalizedStatus,
+            course: courseId || null,
+            notes: remarks || '',
+            markedBy: req.user._id
+        });
+
+        const populated = await record.populate('student', 'name studentId');
+        res.json(populated);
+    } catch (err) {
+        console.error('Mark attendance error:', err.message);
+        if (err.name === 'ValidationError') {
+            return res.status(400).json({ message: 'Validation Error', errors: err.errors });
+        }
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ─── Request Edit (OTP) ─ POST /:userId/request-edit ──────────────────────
+router.post('/:userId/request-edit', protect, async (req, res) => {
+    try {
+        const { date, courseId } = req.body;
+        const userId = req.params.userId;
+
+        if (!date) return res.status(400).json({ message: 'Date is required' });
+
+        const record = await StudentAttendance.findOne({
+            student: new mongoose.Types.ObjectId(userId),
+            date: dayStart(date)
+        });
+        if (!record) {
+            return res.status(404).json({ message: 'No attendance record found for this date. Mark attendance first.' });
+        }
+
+        // Generate 6-digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+        record.otp = otp;
+        record.otpExpiry = otpExpiry;
+        if (courseId) record.pendingEdit = { courseId };
+        await record.save();
+
+        // Send OTP email to HR
+        const hrEmail = process.env.SMTP_USER || process.env.FROM_EMAIL || 'hr@by8labs.com';
+        await transporter.sendMail({
+            from: `"HR System" <${hrEmail}>`,
+            to: hrEmail,
+            subject: '🔐 Attendance Edit OTP',
+            html: `
+                <div style="font-family:sans-serif;max-width:480px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
+                    <div style="background:#1976d2;padding:20px;color:#fff">
+                        <h2 style="margin:0">Attendance Edit Request</h2>
+                    </div>
+                    <div style="padding:24px">
+                        <p>An edit has been requested for student attendance on <strong>${date}</strong>.</p>
+                        <p>Your OTP is:</p>
+                        <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1976d2;text-align:center;padding:16px;background:#f0f7ff;border-radius:8px">${otp}</div>
+                        <p style="color:#888;font-size:13px;margin-top:16px">This OTP expires in <strong>10 minutes</strong>.</p>
+                    </div>
+                </div>
+            `
+        });
+
+        res.json({ success: true, message: 'OTP sent to HR email' });
+    } catch (err) {
+        console.error('Request edit error:', err.message);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ─── Verify Edit (OTP) ─ PUT /:userId/verify-edit ─────────────────────────
+router.put('/:userId/verify-edit', protect, async (req, res) => {
+    try {
+        const { otp, date, status, remarks, courseId } = req.body;
+        const userId = req.params.userId;
+
+        if (!otp || !date || !status) {
+            return res.status(400).json({ message: 'otp, date, and status are required' });
+        }
+
+        const record = await StudentAttendance.findOne({
+            student: new mongoose.Types.ObjectId(userId),
+            date: dayStart(date)
+        });
+        if (!record) return res.status(404).json({ message: 'Attendance record not found' });
+        if (!record.otp || record.otp !== otp) {
+            return res.status(400).json({ message: 'Invalid OTP' });
+        }
+        if (!record.otpExpiry || new Date() > record.otpExpiry) {
+            return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+        }
+
+        // Normalize status
+        let normalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
+        if (!['Present', 'Absent', 'Holiday'].includes(normalizedStatus)) {
+            return res.status(400).json({ message: 'Status must be one of: Present, Absent, Holiday' });
+        }
+
+        record.status = normalizedStatus;
+        record.notes = remarks || record.notes;
+        if (courseId) record.course = courseId;
+        record.markedBy = req.user._id;
+        // Clear OTP fields
+        record.otp = undefined;
+        record.otpExpiry = undefined;
+        record.pendingEdit = undefined;
+        await record.save();
+
+        const populated = await record.populate('student', 'name studentId');
+        res.json({ success: true, message: 'Attendance updated successfully', data: populated });
+    } catch (err) {
+        console.error('Verify edit error:', err.message);
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ─── Get Student Full Attendance List by ID (GET /:userId) ────────────────
+router.get('/:userId', protect, async (req, res) => {
+    try {
+        const { date, startDate, endDate } = req.query;
+        const userId = req.params.userId;
+        const query = { student: new mongoose.Types.ObjectId(userId) };
+
+        if (date) {
+            query.date = { $gte: dayStart(date), $lte: dayEnd(date) };
+        } else if (startDate && endDate) {
+            query.date = { $gte: dayStart(startDate), $lte: dayEnd(endDate) };
+        }
+
+        const records = await StudentAttendance.find(query)
+            .populate('course', 'courseName courseCode')
+            .sort({ date: -1 });
+
+        res.json({
+            success: true,
+            total: records.length,
+            data: records
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ─── Get Student Attendance Summary by ID (GET /summary/:userId) ──────────
+router.get('/summary/:userId', protect, async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const records = await StudentAttendance.find({ student: new mongoose.Types.ObjectId(userId) });
+
+        const summary = {
+            totalDays: records.length,
+            presentCount: records.filter(r => r.status === 'Present').length,
+            absentCount: records.filter(r => r.status === 'Absent').length,
+            holidayCount: records.filter(r => r.status === 'Holiday').length,
+            attendancePercentage: 0
+        };
+
+        if (summary.totalDays > 0) {
+            summary.attendancePercentage = (summary.presentCount / summary.totalDays) * 100;
+        }
+
+        res.json(summary);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

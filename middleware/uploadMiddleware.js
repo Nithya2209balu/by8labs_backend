@@ -18,6 +18,8 @@ const storage = multer.diskStorage({
             uploadPath = 'uploads/announcements/images';
         } else if (file.fieldname === 'videos') {
             uploadPath = 'uploads/announcements/videos';
+        } else if (file.fieldname === 'image') {
+            uploadPath = 'uploads/courses/categories';
         } else {
             uploadPath = 'uploads/announcements';
         }
@@ -66,5 +68,6 @@ module.exports = {
     uploadAnnouncementFiles: upload.fields([
         { name: 'images', maxCount: 10 },
         { name: 'videos', maxCount: 5 }
-    ])
+    ]),
+    uploadCourseCategory: upload.single('image')
 };
