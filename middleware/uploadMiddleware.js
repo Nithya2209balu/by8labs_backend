@@ -54,20 +54,46 @@ const fileFilter = (req, file, cb) => {
     }
 };
 
-// Create multer instance
+// Create multer instance for images (5 MB limit)
+const uploadImages = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 }  // 5 MB
+});
+
+// Create multer instance for videos (50 MB limit)
+const uploadVideos = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: { fileSize: 50 * 1024 * 1024 }  // 50 MB
+});
+
+// Combined upload (use higher limit so both can go through one instance)
 const upload = multer({
     storage: storage,
     fileFilter: fileFilter,
-    limits: {
-        fileSize: 50 * 1024 * 1024  // 50MB max file size
-    }
+    limits: { fileSize: 50 * 1024 * 1024 }
 });
+
+// Wrap multer to catch errors gracefully (prevents server crash)
+const safeUpload = (multerMiddleware) => (req, res, next) => {
+    multerMiddleware(req, res, (err) => {
+        if (err) {
+            console.error('[Upload Error]', err.message);
+            if (err.code === 'LIMIT_FILE_SIZE') {
+                return res.status(400).json({ message: `File too large. Images max 5 MB, Videos max 50 MB.` });
+            }
+            return res.status(400).json({ message: `Upload error: ${err.message}` });
+        }
+        next();
+    });
+};
 
 // Export configured upload middleware
 module.exports = {
-    uploadAnnouncementFiles: upload.fields([
+    uploadAnnouncementFiles: safeUpload(upload.fields([
         { name: 'images', maxCount: 10 },
         { name: 'videos', maxCount: 5 }
-    ]),
-    uploadCourseCategory: upload.single('image')
+    ])),
+    uploadCourseCategory: safeUpload(upload.single('image'))
 };

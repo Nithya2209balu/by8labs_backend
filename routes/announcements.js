@@ -102,7 +102,8 @@ router.post('/', protect, isHR, uploadAnnouncementFiles, async (req, res) => {
 
         res.status(201).json(announcement);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error('[Announcement POST] Error:', error.name, error.message, error.stack);
+        res.status(500).json({ message: error.message, detail: error.name });
     }
 });
 

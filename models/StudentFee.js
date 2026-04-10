@@ -14,7 +14,8 @@ const studentFeeSchema = new mongoose.Schema({
         default: 'Pending',
     },
     receiptNumber: { type: String, unique: true, sparse: true },
-    paymentMode: { type: String, enum: ['Cash', 'Online', 'Cheque', 'DD'], default: 'Cash' },
+    installment: { type: String, trim: true }, // e.g., "Installment 1", "Down Payment"
+    paymentMode: { type: String, enum: ['Cash', 'UPI', 'Card', 'Online', 'Cheque', 'DD'], default: 'Cash' },
     notes: { type: String },
 }, { timestamps: true });
 

@@ -4,8 +4,13 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Employee = require('../models/Employee');
 const sendEmail = require('../utils/sendEmail');
-const { otpEmailTemplate } = require('../utils/emailTemplates');
-const { autoConfigureEmail } = require('../utils/emailProviders');
+const { 
+    otpEmailTemplate, 
+    newUserRegistrationAdminTemplate,
+    userAccountStatusTemplate 
+} = require('../utils/emailTemplates');
+const Notification = require('../models/Notification');
+const { autoConfigureEmail, getProviderConfig } = require('../utils/emailProviders');
 
 // Generate JWT Token
 const generateToken = (id) => {
@@ -25,6 +30,14 @@ router.post('/register', async (req, res) => {
         const userExists = await User.findOne({ email });
         if (userExists) {
             return res.status(400).json({ message: 'User already exists' });
+        }
+
+        // Validate email domain (Hostinger only)
+        const providerConfig = getProviderConfig(email);
+        if (!providerConfig || providerConfig.name !== 'Hostinger') {
+            return res.status(400).json({ 
+                message: 'Only business email addresses (Hostinger) are allowed for registration. Gmail, Yahoo, etc. are not supported.' 
+            });
         }
 
         // Validate employee exists
@@ -101,9 +114,10 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // Check if user is active
-        if (!user.isActive) {
-            return res.status(401).json({ message: 'Account is deactivated' });
+        // Check password
+        const isMatch = await user.matchPassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid credentials' });
         }
 
         // Check if email is verified
@@ -115,15 +129,18 @@ router.post('/login', async (req, res) => {
             });
         }
 
-        // Check password
-        const isMatch = await user.matchPassword(password);
-        if (!isMatch) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+        // Check if account is active or pending
+        // We now allow 'Pending' users to login so they can see their "Waiting for Approval" screen
+        if (!user.isActive && user.approvalStatus !== 'Pending') {
+            return res.status(401).json({ message: 'Your account is inactive. Please contact HR.' });
         }
 
         // Update last login
         user.lastLogin = new Date();
         await user.save();
+
+        // Generate token
+        const token = generateToken(user._id);
 
         res.json({
             _id: user._id,
@@ -131,8 +148,9 @@ router.post('/login', async (req, res) => {
             email: user.email,
             role: user.role,
             employeeId: user.employeeId,
+            approvalStatus: user.approvalStatus, // Include status in response
             hasDataAccess: user.hasDataAccess,
-            token: generateToken(user._id)
+            token: token
         });
     } catch (error) {
         res.status(500).json({ message: error.message });
@@ -190,7 +208,19 @@ router.put('/approve-user/:userId', protect, isHR, async (req, res) => {
         user.isActive = true;
         user.approvedBy = req.user._id;
         user.approvedDate = new Date();
+        user.hasDataAccess = true; // Auto-grant data access upon HR approval
         await user.save();
+
+        // Send approval email
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Account Approved - BY8labs',
+                html: userAccountStatusTemplate(user.username, 'Approved')
+            });
+        } catch (emailError) {
+            console.error('Failed to send approval email:', emailError.message);
+        }
 
         res.json({
             message: 'User approved successfully',
@@ -232,6 +262,17 @@ router.put('/reject-user/:userId', protect, isHR, async (req, res) => {
         user.approvedDate = new Date();
         user.rejectionReason = reason || 'No reason provided';
         await user.save();
+
+        // Send rejection email
+        try {
+            await sendEmail({
+                email: user.email,
+                subject: 'Account Registration Update - BY8labs',
+                html: userAccountStatusTemplate(user.username, 'Rejected', user.rejectionReason)
+            });
+        } catch (emailError) {
+            console.error('Failed to send rejection email:', emailError.message);
+        }
 
         res.json({
             message: 'User registration rejected',
@@ -276,12 +317,51 @@ router.post('/verify-otp', async (req, res) => {
             return res.status(400).json({ message: 'Verification code expired. Please request a new one.' });
         }
 
-        // Mark as verified and activate account (skipping manual HR approval for now)
+        // Mark as verified but keep inactive until HR approval
         user.isEmailVerified = true;
-        user.isActive = true;  // Activate user so they can login
-        user.approvalStatus = 'Approved'; // Auto-approve upon email verification
+        user.isActive = false;  // Keep inactive until HR approval
+        user.approvalStatus = 'Pending';
         user.emailOTP = undefined;
         user.emailOTPExpires = undefined;
+
+        await user.save();
+
+        // Notify HR about new registration
+        try {
+            const hrUsers = await User.find({ role: 'HR' });
+            const hrEmails = hrUsers.map(u => u.email).filter(e => e);
+            
+            // If no HR users in DB, use the official HR email provided by user
+            if (hrEmails.length === 0) {
+                hrEmails.push('hr@by8labs.com');
+            }
+
+            // Send emails to HR
+            const emailPromises = hrEmails.map(email => 
+                sendEmail({
+                    email,
+                    subject: 'New User Registration Pending Approval',
+                    html: newUserRegistrationAdminTemplate(user.username, user.email)
+                })
+            );
+
+            // Create in-app notifications for all HR users
+            const notificationPromises = hrUsers.map(hr => 
+                Notification.create({
+                    recipientId: hr._id,
+                    type: 'General',
+                    title: 'New User Registration',
+                    message: `${user.username} has registered and is waiting for approval.`,
+                    priority: 'High',
+                    actionUrl: '/pending-users'
+                })
+            );
+
+            await Promise.all([...emailPromises, ...notificationPromises]);
+        } catch (notifyError) {
+            console.error('Failed to notify HR:', notifyError.message);
+            // Don't fail the verification if notification fails
+        }
 
         // Auto-create Employee record if it doesn't exist
         if (!user.employeeId) {

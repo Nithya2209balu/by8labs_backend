@@ -62,6 +62,11 @@ app.use('/api/student-assignments', require('./routes/studentAssignments'));
 app.use('/api/student-reports', require('./routes/studentReports'));
 app.use('/api/student-admissions', require('./routes/studentAdmissions'));
 app.use('/api/courses', require('./routes/courses'));
+app.use('/api/payments', require('./routes/payments'));
+
+// HR Certificate module routes
+app.use('/api/experience-letters', require('./routes/experienceLetters'));
+app.use('/api/offer-letters-hr', require('./routes/offerLettersHR'));
 
 // Welcome route
 app.get('/', (req, res) => {

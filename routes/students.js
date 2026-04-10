@@ -28,7 +28,7 @@ router.get('/', protect, hrOnly, async (req, res) => {
             ];
         }
         const students = await Student.find(query)
-            .populate('course', 'courseName courseCode')
+            .populate('course', 'courseName courseCode fees')
             .sort({ createdAt: -1 })
             .skip((page - 1) * limit)
             .limit(Number(limit));
@@ -42,7 +42,7 @@ router.get('/', protect, hrOnly, async (req, res) => {
 // GET single student
 router.get('/:id', protect, hrOnly, async (req, res) => {
     try {
-        const student = await Student.findById(req.params.id).populate('course', 'courseName courseCode faculty');
+        const student = await Student.findById(req.params.id).populate('course', 'courseName courseCode faculty fees');
         if (!student) return res.status(404).json({ message: 'Student not found' });
         res.json(student);
     } catch (err) {
@@ -61,7 +61,7 @@ router.post('/', protect, hrOnly, async (req, res) => {
                 $addToSet: { enrolledStudents: student._id },
             });
         }
-        await student.populate('course', 'courseName courseCode');
+        await student.populate('course', 'courseName courseCode fees');
         res.status(201).json(student);
     } catch (err) {
         if (err.code === 11000) {
@@ -90,7 +90,7 @@ router.put('/:id', protect, hrOnly, async (req, res) => {
         }
 
         const student = await Student.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
-            .populate('course', 'courseName courseCode');
+            .populate('course', 'courseName courseCode fees');
         res.json(student);
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
