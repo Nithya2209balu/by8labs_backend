@@ -48,7 +48,7 @@ async function createBy8LabsHR() {
         console.log('   Role: HR (Full Access)');
         console.log('   Employee ID:', hrEmployee.employeeId);
         console.log('   User ID:', hrUser._id);
-        console.log('\n🚀 Login at: http://localhost:5173\n');
+        console.log('\n🚀 Login at: https://by8labs-frontend.onrender.com\n');
 
         process.exit(0);
     } catch (error) {

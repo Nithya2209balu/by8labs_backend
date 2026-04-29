@@ -51,7 +51,7 @@ async function createSuperAdmin() {
         console.log('   ✓ Employee record linked');
         console.log('   ✓ Approved status');
         console.log('   ✓ Active status');
-        console.log('\n🚀 GO TO: http://localhost:5173');
+        console.log('\n🚀 GO TO: https://by8labs-frontend.onrender.com');
         console.log('   Login with credentials above\n');
 
         process.exit(0);

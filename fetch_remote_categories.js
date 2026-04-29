@@ -7,10 +7,10 @@ async function testFetch() {
             identifier: 'hr@test.com', // or whatever works
             password: 'password123'
         });
-        
+
         const token = loginRes.data.token || loginRes.data.data.token;
         console.log("Token received.");
-        
+
         console.log("Fetching categories...");
         const response = await axios.get('https://student-portal-znxr.onrender.com/api/courses/categories/list', {
             headers: { Authorization: `Bearer ${token}` }

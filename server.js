@@ -2,6 +2,7 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 
 // Load environment variables
@@ -11,6 +12,19 @@ dotenv.config();
 connectDB();
 
 const app = express();
+
+// Database connection check middleware
+app.use((req, res, next) => {
+    const isConnected = mongoose.connection.readyState === 1;
+    if (!isConnected && req.path.startsWith('/api/') && !req.path.includes('/test') && req.path !== '/') {
+        return res.status(503).json({
+            message: 'Database connection is currently unavailable.',
+            error: 'Database connection failed (EAI_AGAIN or timeout). Please check your internet connection or try again later.',
+            status: 'disconnected'
+        });
+    }
+    next();
+});
 
 // Middleware
 app.use(cors());

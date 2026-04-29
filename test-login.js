@@ -3,8 +3,8 @@ const axios = require('axios');
 async function testLogin() {
     try {
         console.log('=== Testing Login API ===\n');
-        console.log('Backend URL: http://localhost:5000');
-        console.log('Frontend URL: http://localhost:5173\n');
+        console.log('Backend URL: https://by8labs-backend.onrender.com');
+        console.log('Frontend URL: https://by8labs-frontend.onrender.com\n');
 
         const credentials = {
             email: 'hr@test.com',
@@ -16,7 +16,7 @@ async function testLogin() {
         console.log('Password:', credentials.password);
         console.log('\nSending POST request to /api/auth/login...\n');
 
-        const response = await axios.post('http://localhost:5000/api/auth/login', credentials);
+        const response = await axios.post('https://by8labs-backend.onrender.com/api/auth/login', credentials);
 
         console.log('✅ LOGIN SUCCESSFUL!');
         console.log('\nResponse:');
@@ -46,8 +46,7 @@ async function testLogin() {
             }
         } else if (error.code === 'ECONNREFUSED') {
             console.log('⚠️  Cannot connect to backend server');
-            console.log('Make sure backend is running on port 5000');
-            console.log('Check if "npm run dev" is running in the backend folder');
+            console.log('Make sure backend is running at https://by8labs-backend.onrender.com');
         } else {
             console.log('Error:', error.message);
         }

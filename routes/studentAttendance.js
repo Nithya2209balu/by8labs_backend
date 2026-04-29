@@ -224,14 +224,14 @@ router.post('/:userId/request-edit', protect, async (req, res) => {
             to: hrEmail,
             subject: '🔐 Attendance Edit OTP',
             html: `
-                <div style="font-family:sans-serif;max-width:480px;margin:auto;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden">
+                <div style="font-family:sans-serif;max-width:480px;margin:auto;border:1px solid #e0e0e0;overflow:hidden">
                     <div style="background:#1976d2;padding:20px;color:#fff">
                         <h2 style="margin:0">Attendance Edit Request</h2>
                     </div>
                     <div style="padding:24px">
                         <p>An edit has been requested for student attendance on <strong>${date}</strong>.</p>
                         <p>Your OTP is:</p>
-                        <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1976d2;text-align:center;padding:16px;background:#f0f7ff;border-radius:8px">${otp}</div>
+                        <div style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1976d2;text-align:center;padding:16px;background:#f0f7ff">${otp}</div>
                         <p style="color:#888;font-size:13px;margin-top:16px">This OTP expires in <strong>10 minutes</strong>.</p>
                     </div>
                 </div>

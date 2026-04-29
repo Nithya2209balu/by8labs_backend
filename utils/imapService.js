@@ -11,7 +11,7 @@ const withTimeout = (promise, timeoutMs, operation) => {
     ]);
 };
 
-const getInboxEmails = async (userConfig, limit = 20) => {
+const getInboxEmails = async (userConfig, limit = 20, searchEmail = null) => {
     let connection = null;
     try {
         // Use user config if provided, otherwise fallback to env (legacy support)
@@ -39,7 +39,7 @@ const getInboxEmails = async (userConfig, limit = 20) => {
         console.log('[IMAP] Connected successfully. Opening INBOX...');
 
         // Add timeout for opening mailbox (10 seconds)
-        await withTimeout(
+        const boxInfo = await withTimeout(
             connection.openBox('INBOX'),
             10000,
             'INBOX open'
@@ -47,69 +47,104 @@ const getInboxEmails = async (userConfig, limit = 20) => {
 
         console.log('[IMAP] INBOX opened. Fetching emails...');
 
-        // First, get the total number of messages and calculate UID range
-        const boxInfo = await connection.openBox('INBOX');
-        const totalMessages = boxInfo.messages.total;
-        console.log(`[IMAP] Total messages in inbox: ${totalMessages}`);
+        // Determine search criteria
+        let searchCriteria = ['ALL'];
+        let useJsFiltering = false;
 
-        // Optimize: Only fetch recent emails using UID range
-        // This is much faster than fetching ALL messages
-        const startSeq = Math.max(1, totalMessages - 49); // Fetch last 50 messages
-        const endSeq = totalMessages;
+        if (searchEmail) {
+            console.log(`[IMAP] Searching for: ${searchEmail}`);
+            // Robust search criteria for most IMAP servers
+            searchCriteria = [['OR', ['TO', searchEmail], ['OR', ['CC', searchEmail], ['BCC', searchEmail]]]];
+            useJsFiltering = true; // Still filter in JS for safety/formatting
+        } else {
+            const totalMessages = boxInfo.messages.total;
+            const fetchCount = 100; // Increase window to 100 for better recent coverage
+            const startSeq = Math.max(1, totalMessages - (fetchCount - 1));
+            const endSeq = totalMessages;
+            searchCriteria = [`${startSeq}:${endSeq}`];
+            console.log(`[IMAP] Fetching most recent ${fetchCount} messages (sequence ${startSeq}:${endSeq})...`);
+        }
 
-        const searchCriteria = [`${startSeq}:${endSeq}`]; // Fetch by sequence number range
         const fetchOptions = {
-            bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)'], // Only fetch headers, not full bodies
+            bodies: ['HEADER.FIELDS (FROM TO CC BCC SUBJECT DATE)'], // Include CC and BCC in headers
             markSeen: false,
             struct: true
         };
 
-        console.log(`[IMAP] Fetching messages ${startSeq} to ${endSeq}...`);
-
         // Add timeout for search operation (30 seconds)
-        const messages = await withTimeout(
+        let messages = await withTimeout(
             connection.search(searchCriteria, fetchOptions),
             30000,
             'Email search'
         );
 
-        console.log(`[IMAP] Found ${messages.length} messages. Processing...`);
+        // Fallback: If searchEmail provided but 0 results found, try fetching last 100 and filtering in JS
+        if (searchEmail && messages.length === 0) {
+            console.log(`[IMAP] No results matching search. Falling back to fetching last 100 and filtering in JS...`);
+            const totalMessages = boxInfo.messages.total;
+            const startSeq = Math.max(1, totalMessages - 99);
+            const endSeq = totalMessages;
+            const fallbackCriteria = [`${startSeq}:${endSeq}`];
+            
+            messages = await withTimeout(
+                connection.search(fallbackCriteria, fetchOptions),
+                30000,
+                'Email fallback fetch'
+            );
+            useJsFiltering = true;
+        }
 
-        // Sort by date (descending) and take the latest 'limit' emails
-        const sortedMessages = messages.sort((a, b) => {
-            const dateA = a.attributes.date || new Date(0);
-            const dateB = b.attributes.date || new Date(0);
-            return new Date(dateB) - new Date(dateA);
-        }).slice(0, limit);
+        console.log(`[IMAP] Found ${messages.length} potential messages. Processing...`);
 
-        console.log(`[IMAP] Parsing ${sortedMessages.length} emails...`);
+        const lowerSearchEmail = searchEmail ? searchEmail.toLowerCase() : null;
 
-        const parsedEmails = sortedMessages.map((message) => {
+        const parsedEmails = messages.map((message) => {
             const id = message.attributes.uid;
             const seen = message.attributes.flags.includes('\\Seen');
 
             // Parse header fields
-            const headerPart = message.parts.find(part => part.which === 'HEADER.FIELDS (FROM TO SUBJECT DATE)');
+            const headerPart = message.parts.find(part => part.which === 'HEADER.FIELDS (FROM TO CC BCC SUBJECT DATE)');
             const headers = headerPart ? headerPart.body : {};
 
             // Extract basic info from headers
             const subject = headers.subject ? headers.subject[0] : '(No Subject)';
             const from = headers.from ? headers.from[0] : 'Unknown';
+            const to = headers.to ? headers.to[0] : 'Unknown';
+            const cc = headers.cc ? headers.cc[0] : '';
+            const bcc = headers.bcc ? headers.bcc[0] : '';
             const date = headers.date ? new Date(headers.date[0]) : message.attributes.date || new Date();
 
             return {
                 id: id,
                 subject: subject,
                 from: from,
+                to: to,
+                cc: cc,
+                bcc: bcc,
                 date: date,
-                preview: `${subject.substring(0, 50)}...`, // Use subject as preview for now
+                preview: `${subject.substring(0, 50)}...`,
                 seen: seen
             };
         });
 
-        console.log(`[IMAP] Successfully parsed ${parsedEmails.length} emails. Closing connection...`);
+        // Filter and Sort
+        let finalEmails = parsedEmails;
+
+        if (useJsFiltering && lowerSearchEmail) {
+            finalEmails = parsedEmails.filter(email => {
+                const searchIn = `${email.to} ${email.cc} ${email.bcc}`.toLowerCase();
+                return searchIn.includes(lowerSearchEmail);
+            });
+            console.log(`[IMAP] JS filtering reduced ${parsedEmails.length} to ${finalEmails.length} messages for ${lowerSearchEmail}`);
+        }
+
+        // Always sort by date descending
+        finalEmails.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const result = finalEmails.slice(0, limit);
+        console.log(`[IMAP] Successfully returned ${result.length} emails. Closing connection...`);
         connection.end();
-        return parsedEmails;
+        return result;
     } catch (error) {
         console.error('[IMAP] Error:', error.message);
         console.error('[IMAP] Error details:', error);

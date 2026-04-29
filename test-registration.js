@@ -16,9 +16,7 @@ const runTest = async () => {
         await Employee.deleteMany({ email: testEmail });
         console.log('🧹 Cleaned up old test data');
 
-        // 1. Register User
-        console.log('🚀 Registering user...');
-        const registerRes = await axios.post('http://localhost:5000/api/auth/register', {
+        const registerRes = await axios.post('https://by8labs-backend.onrender.com/api/auth/register', {
             username: 'Test AutoUser',
             email: testEmail,
             password: 'password123',
@@ -35,9 +33,7 @@ const runTest = async () => {
         }
         console.log('🔑 Retrieved OTP from DB:', user.emailOTP);
 
-        // 3. Verify OTP
-        console.log('✨ Verifying OTP...');
-        const verifyRes = await axios.post('http://localhost:5000/api/auth/verify-otp', {
+        const verifyRes = await axios.post('https://by8labs-backend.onrender.com/api/auth/verify-otp', {
             userId: userId,
             otp: user.emailOTP
         });

@@ -28,7 +28,7 @@ async function fixHRUser() {
         console.log('Email:    hr@test.com');
         console.log('Password: password123');
         console.log('============================\n');
-        console.log('You can now login at: http://localhost:5173\n');
+        console.log('You can now login at: https://by8labs-frontend.onrender.com\n');
 
         process.exit(0);
     } catch (error) {

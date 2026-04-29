@@ -10,18 +10,35 @@ const { decrypt } = require('../utils/encryption');
 router.use(protect);
 
 // Helper: Get user email config
-const getUserConfig = async (userId) => {
+const getUserConfig = async (req) => {
+    const userId = req.user._id;
+    const headerPassword = req.headers['x-hostinger-password'];
+
     const user = await User.findById(userId).select('+emailConfig.password');
+    
+    // If no config at all, return null (fallback to env)
     if (!user.emailConfig || !user.emailConfig.isConfigured) {
-        return null; // Will fallback to env in services if null
+        // Still check if we have a header password for 'manual' use with default host/port
+        if (headerPassword) {
+            return {
+                email: user.email,
+                password: headerPassword,
+                smtpHost: 'smtp.hostinger.com',
+                smtpPort: 465,
+                imapHost: 'imap.hostinger.com',
+                imapPort: 993
+            };
+        }
+        return null; 
     }
 
     const config = user.emailConfig;
-    const decryptedPassword = decrypt(config.password);
+    // Use header password if provided (for session-based), otherwise use decrypted DB password
+    const passwordToUse = headerPassword || decrypt(config.password);
 
     return {
         email: config.email,
-        password: decryptedPassword,
+        password: passwordToUse,
         smtpHost: config.smtpHost,
         smtpPort: config.smtpPort,
         imapHost: config.imapHost,
@@ -136,7 +153,7 @@ router.post('/', async (req, res) => {
         // Send actual SMTP emails to all recipients
         try {
             const recipientUsers = await User.find({ _id: { $in: recipientIds } }, 'email username');
-            const userConfig = await getUserConfig(req.user._id);
+            const userConfig = await getUserConfig(req);
 
             const emailResults = await sendBulkEmail(
                 recipientUsers,
@@ -311,13 +328,20 @@ const { getInboxEmails, getEmailContent } = require('../utils/imapService');
 router.get('/external/inbox', async (req, res) => {
     try {
         console.log('[External Inbox] Fetching external inbox...');
-        const userConfig = await getUserConfig(req.user._id);
+        const userConfig = await getUserConfig(req);
 
-        // If no user config, use environment variables
+        // If no user config, only allow HR to use environment variables fallback
         let configToUse = userConfig;
         let configSource = 'user settings';
 
         if (!userConfig) {
+            if (req.user.role !== 'HR') {
+                return res.status(400).json({
+                    message: 'Email not configured. Please configure your individual email settings to view your messages.',
+                    hint: 'Click the Settings button to configure your account'
+                });
+            }
+
             console.log('[External Inbox] No user email config found, using environment variables');
             configSource = 'environment variables';
             configToUse = {
@@ -330,16 +354,22 @@ router.get('/external/inbox', async (req, res) => {
             // Verify .env has the required values
             if (!configToUse.email || !configToUse.password) {
                 return res.status(400).json({
-                    message: 'Email not configured. Please configure your email settings or check environment variables.',
-                    hint: 'Go to Settings > Email Configuration to set up your email account'
+                    message: 'System email not configured. Please contact administrator.',
                 });
             }
         }
 
         console.log(`[External Inbox] Using config from ${configSource}: ${configToUse.email}@${configToUse.imapHost}:${configToUse.imapPort}`);
 
+        // Only search for user's email if we are using the fallback (shared) config
+        // If it's a private user config, show ALL emails in that inbox
+        const searchEmail = userConfig ? null : req.user.email.toLowerCase();
+
         // Limit to 20 emails for performance
-        const emails = await getInboxEmails(configToUse, 20);
+        const emails = await getInboxEmails(configToUse, 20, searchEmail);
+
+        console.log(`[External Inbox] Fetched ${emails.length} emails for user ${req.user.email}`);
+        
         res.json(emails);
     } catch (error) {
         console.error('[External Inbox] Error:', error.message);
@@ -354,7 +384,7 @@ router.get('/external/inbox', async (req, res) => {
 router.get('/external/message/:uid', async (req, res) => {
     try {
         const uid = req.params.uid;
-        const userConfig = await getUserConfig(req.user._id);
+        const userConfig = await getUserConfig(req);
 
         if (!userConfig) {
             return res.status(400).json({

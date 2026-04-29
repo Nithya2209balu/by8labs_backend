@@ -1,8 +1,7 @@
 const axios = require('axios');
 const mongoose = require('mongoose');
 
-// The portal has its own URL usually, but let's test locally assuming the backend runs on port 5000.
-const BASE_URL = 'http://localhost:5000/api';
+const BASE_URL = 'https://by8labs-backend.onrender.com/api';
 
 // For testing purposes, we might need a valid HR token and a student ID.
 // This is a placeholder structure to show how testing can be performed.

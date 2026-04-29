@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = 'https://by8labs-backend.onrender.com/api';
 
 const runTest = async () => {
     try {
