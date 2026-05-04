@@ -3,6 +3,7 @@ const express = require('express');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const path = require('path');
 const connectDB = require('./config/db');
 
 // Load environment variables
@@ -85,6 +86,20 @@ app.use('/api/offer-letters-hr', require('./routes/offerLettersHR'));
 // Welcome route
 app.get('/', (req, res) => {
     res.json({ message: 'BY8labs API' });
+});
+
+// Serve Static Frontend Files
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+// Catch-all route to serve React's index.html for any unknown routes
+app.get('*', (req, res) => {
+    const indexPath = path.join(__dirname, '../frontend/dist/index.html');
+    // Only send index.html if it exists, otherwise it might loop or hide API errors
+    res.sendFile(indexPath, (err) => {
+        if (err) {
+            res.status(404).json({ message: 'API route not found and frontend build not found' });
+        }
+    });
 });
 
 // Error handling middleware
